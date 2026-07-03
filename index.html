@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Oracle — How a Machine Guesses the Next Word</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f2ecdd;
+    --paper-shade:#e9e1cd;
+    --ink:#1c1813;
+    --ink-soft:#4a4237;
+    --ink-faint:#7a7161;
+    --rule:#c3b598;
+    --rule-strong:#8f8368;
+    --red:#9a2b1c;         /* editorial stamp / "hot" */
+    --measure:600px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Newsreader",Georgia,serif;
+    font-optical-sizing:auto;
+    font-feature-settings:"onum" 1,"liga" 1;
+    line-height:1.5;
+    display:flex;flex-direction:column;align-items:center;
+    padding:0 1rem 4rem;
+    /* faint paper grain */
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(0,0,0,0.015), transparent 60%),
+      radial-gradient(circle at 85% 80%, rgba(0,0,0,0.02), transparent 55%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  }
+  .sheet{width:100%;max-width:var(--measure)}
+
+  /* ── Masthead ── */
+  .masthead{text-align:center;padding:1.6rem 0 0.4rem}
+  .masthead .kicker{
+    font-size:0.66rem;letter-spacing:0.32em;text-transform:uppercase;
+    color:var(--ink-soft);font-weight:500;
+  }
+  .nameplate{
+    font-family:"UnifrakturCook",serif;font-weight:700;
+    font-size:clamp(2.9rem,13vw,4.6rem);line-height:0.95;
+    margin:0.2rem 0 0.1rem;
+  }
+  .masthead .strap{
+    font-family:"Playfair Display",serif;font-style:italic;
+    font-size:1rem;color:var(--ink-soft);
+  }
+  .rule-heavy{border:0;border-top:3px double var(--rule-strong);margin:0.7rem 0 0.25rem}
+  .rule-thin{border:0;border-top:1px solid var(--rule);margin:0.25rem 0}
+  .furniture{
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;
+    font-size:0.64rem;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--ink-faint);padding:0.3rem 0.1rem 0;
+  }
+
+  /* ── Standfirst / lead ── */
+  .lead{padding:1.4rem 0 0.6rem}
+  .headline{
+    font-family:"Playfair Display",serif;font-weight:900;
+    font-size:clamp(1.7rem,6.5vw,2.4rem);line-height:1.08;
+    text-align:center;margin-bottom:0.5rem;
+  }
+  .deck{
+    font-style:italic;color:var(--ink-soft);text-align:center;
+    font-size:1.02rem;max-width:34em;margin:0 auto 0.9rem;
+  }
+  .body-copy{font-size:1.02rem}
+  .body-copy p{margin-bottom:0.7rem;text-align:justify;hyphens:auto}
+  .body-copy p.first::first-letter{
+    font-family:"Playfair Display",serif;font-weight:900;
+    float:left;font-size:3.3rem;line-height:0.72;
+    padding:0.28rem 0.5rem 0 0;color:var(--ink);
+  }
+  .smallcaps{font-variant:small-caps;letter-spacing:0.03em}
+
+  /* ── The engine (cartouche) ── */
+  .engine{
+    border:1.5px solid var(--ink);
+    background:linear-gradient(var(--paper-shade),var(--paper));
+    padding:1.1rem 1.1rem 1.3rem;margin:1.4rem 0;
+    box-shadow:2px 3px 0 rgba(28,24,19,0.08);
+  }
+  .engine-head{
+    text-align:center;font-size:0.72rem;letter-spacing:0.22em;
+    text-transform:uppercase;color:var(--ink-soft);font-weight:600;
+    border-bottom:1px solid var(--rule);padding-bottom:0.5rem;margin-bottom:0.8rem;
+  }
+
+  /* dispatch (the sentence so far) */
+  .dispatch-label{font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:0.25rem}
+  .dispatch{
+    font-size:1.14rem;line-height:1.55;min-height:2.6em;
+    border-left:2px solid var(--rule-strong);padding:0.15rem 0 0.15rem 0.7rem;
+    margin-bottom:0.5rem;
+  }
+  .dispatch .fixed{color:var(--ink)}
+  .dispatch .cast{color:var(--red);font-weight:500}
+  .dispatch .caret{color:var(--ink-faint)}
+  .prompt-edit{
+    width:100%;background:transparent;border:1px dashed var(--rule);
+    font-family:inherit;font-size:0.98rem;color:var(--ink);
+    padding:0.4rem 0.5rem;resize:none;line-height:1.5;
+    display:none;
+  }
+  .prompt-edit:focus{outline:none;border-color:var(--ink-soft)}
+  .edit-row{display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;flex-wrap:wrap}
+
+  /* odds table */
+  .odds-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;
+    color:var(--ink-faint);border-bottom:1.5px solid var(--ink);
+    padding-bottom:0.3rem;margin:0.9rem 0 0.15rem;
+  }
+  .odds{list-style:none}
+  .odd{
+    display:grid;grid-template-columns:1.4rem 1fr auto;gap:0.55rem;align-items:center;
+    padding:0.34rem 0;border-bottom:1px dotted var(--rule);
+  }
+  .odd .rank{font-size:0.78rem;color:var(--ink-faint);text-align:right;font-variant-numeric:oldstyle-nums}
+  .odd .word{position:relative}
+  .odd .word .tok{
+    position:relative;z-index:1;font-size:1.02rem;
+    padding:0.05rem 0.35rem;border:1px solid var(--rule);
+    background:rgba(255,255,255,0.35);white-space:pre;border-radius:2px;
+  }
+  .odd .bar{
+    height:0.5rem;margin-top:0.28rem;border:1px solid var(--rule);
+    background:rgba(255,255,255,0.3);overflow:hidden;
+  }
+  .odd .bar > span{display:block;height:100%;width:0;transition:width 0.18s ease, background 0.18s ease}
+  .odd .pct{font-size:0.92rem;font-variant-numeric:oldstyle-nums tabular-nums;color:var(--ink-soft);min-width:3.4em;text-align:right}
+
+  /* temperament dial */
+  .dial{margin:1.1rem 0 0.4rem;border-top:1px solid var(--rule);padding-top:0.9rem}
+  .dial-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.15rem}
+  .dial-title{font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .dial-read{font-family:"Playfair Display",serif;font-weight:700;font-size:1.15rem;font-variant-numeric:oldstyle-nums}
+  .dial-read .mood{font-size:0.72rem;font-weight:400;font-style:italic;color:var(--red);margin-left:0.4rem;font-family:"Newsreader",serif}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:2px;
+    background:var(--rule-strong);margin:0.9rem 0 0.3rem;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--paper);border:2px solid var(--ink);cursor:pointer;margin-top:0;
+  }
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--paper);border:2px solid var(--ink);cursor:pointer}
+  .dial-scale{display:flex;justify-content:space-between;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-faint)}
+
+  /* controls */
+  .controls{display:flex;gap:0.6rem;margin-top:1.1rem;flex-wrap:wrap}
+  button.press{
+    flex:1;min-width:9rem;font-family:"Newsreader",serif;font-weight:500;
+    font-size:0.82rem;letter-spacing:0.14em;text-transform:uppercase;
+    padding:0.6rem 0.8rem;background:var(--ink);color:var(--paper);
+    border:1.5px solid var(--ink);cursor:pointer;transition:background 0.15s,color 0.15s;
+  }
+  button.press:hover:not(:disabled){background:var(--red);border-color:var(--red)}
+  button.press.ghost{background:transparent;color:var(--ink)}
+  button.press.ghost:hover:not(:disabled){background:var(--ink);color:var(--paper)}
+  button.press:disabled{opacity:0.35;cursor:not-allowed}
+
+  /* status */
+  .press-status{
+    display:flex;align-items:center;gap:0.5rem;justify-content:center;
+    font-size:0.66rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-faint);
+    padding:0.5rem 0;
+  }
+  .press-status .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-faint)}
+  .dot.loading{background:var(--red);animation:pulse 1s infinite}
+  .dot.ready{background:#3f6b3a}
+  .dot.error{background:var(--red)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+  .press-bar{height:2px;background:var(--rule);overflow:hidden;margin:0.2rem 0}
+  .press-bar>span{display:block;height:100%;width:0;background:var(--red);transition:width 0.3s}
+  .press-note{text-align:center;font-size:0.68rem;color:var(--ink-faint);font-style:italic}
+
+  /* explainer footnotes */
+  .gloss{margin-top:1.6rem;column-gap:1.6rem}
+  .gloss h3{
+    font-family:"Playfair Display",serif;font-weight:700;font-size:1.05rem;
+    border-bottom:1px solid var(--rule);padding-bottom:0.2rem;margin-bottom:0.4rem;
+  }
+  .gloss p{font-size:0.9rem;color:var(--ink-soft);margin-bottom:0.7rem;text-align:justify;hyphens:auto}
+  .gloss a{color:var(--ink-soft)}
+  .gloss > div{break-inside:avoid}
+  .colophon{
+    margin-top:1.8rem;border-top:3px double var(--rule-strong);padding-top:0.7rem;
+    font-size:0.68rem;color:var(--ink-faint);text-align:center;line-height:1.7;
+  }
+  .colophon a{color:var(--ink-faint)}
+  @media(min-width:560px){ .gloss{column-count:2} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- ══ MASTHEAD ══ -->
+  <div class="masthead">
+    <div class="kicker">A Companion to The AI Interviews · Illustrated Enquiry</div>
+    <h1 class="nameplate">The Oracle</h1>
+    <div class="strap">Being a true account of how a machine guesses the next word</div>
+  </div>
+  <hr class="rule-heavy">
+  <div class="furniture">
+    <span>Vol. I · No. 1</span>
+    <span id="edition-date">Late Edition</span>
+    <span>Price: One Token</span>
+  </div>
+  <hr class="rule-thin">
+
+  <!-- ══ LEAD ══ -->
+  <div class="lead">
+    <h2 class="headline">It Does Only One Thing</h2>
+    <p class="deck">A language model never states a plan. Its one visible act, repeated: given the words so far, how probable is each possible next word? Whatever it intends must travel inside that single bet.</p>
+    <div class="body-copy">
+      <p class="first">Everything a chatbot appears to do &mdash; reason, translate, joke, console &mdash; is delivered through that one operation, repeated. Below is the operation itself, running on your own device, with nothing hidden. Read the opening line, and the machine will publish its odds on what word should come next. It has no favourite until you give it one.</p>
+      <p>That favouritism is set by a single dial, called <span class="smallcaps">temperature</span>. Turn it down and the machine becomes a pedant, always choosing the safest word. Turn it up and it turns feverish, giving long-shot words a real chance. Nothing else changes &mdash; the same odds, read with more or less nerve. Watch the columns below rise and fall as you turn it.</p>
+    </div>
+  </div>
+
+  <!-- ══ THE ENGINE ══ -->
+  <div class="engine">
+    <div class="engine-head">The Setting of the Type</div>
+
+    <div class="dispatch-label">The line so far</div>
+    <div class="dispatch" id="dispatch"><span class="fixed">The lighthouse keeper lit the lamp and watched the</span><span class="caret"> ▊</span></div>
+
+    <div class="edit-row">
+      <button class="press ghost" id="edit-btn" style="flex:0 0 auto;min-width:0;font-size:0.66rem;padding:0.35rem 0.7rem">Rewrite the line</button>
+      <span class="press-note" style="font-style:normal;font-size:0.62rem">or cast words onto the one provided</span>
+    </div>
+    <textarea class="prompt-edit" id="prompt-edit" rows="2"></textarea>
+
+    <div class="odds-head"><span>Odds on the next word</span><span>Probability</span></div>
+    <ul class="odds" id="odds">
+      <li class="press-note" style="padding:1rem 0">The presses are warming&hellip;</li>
+    </ul>
+
+    <!-- temperament -->
+    <div class="dial">
+      <div class="dial-head">
+        <span class="dial-title">Editorial Temperament</span>
+        <span class="dial-read" id="temp-read">0.70<span class="mood" id="temp-mood">measured</span></span>
+      </div>
+      <input type="range" id="temp" min="0.05" max="1.60" step="0.05" value="0.70">
+      <div class="dial-scale"><span>Pedantic · certain</span><span>Feverish · wild</span></div>
+    </div>
+
+    <div class="controls">
+      <button class="press" id="cast-btn" disabled>Set the next word</button>
+      <button class="press ghost" id="reset-btn" disabled>Reset the copy</button>
+    </div>
+
+    <div class="press-status">
+      <span class="dot loading" id="dot"></span>
+      <span id="status-text">warming the presses</span>
+    </div>
+    <div class="press-bar"><span id="press-bar-fill"></span></div>
+    <div class="press-note" id="press-note">a small on-device press · weights load once, then cache</div>
+  </div>
+
+  <!-- ══ GLOSS ══ -->
+  <div class="gloss">
+    <div>
+      <h3>What a token is</h3>
+      <p>The machine does not think in words but in <span class="smallcaps">tokens</span> &mdash; word-fragments from a fixed vocabulary. Common words are one token; rarer ones are stitched from several. The odds above are cast over that whole vocabulary; only the leaders are shown. A leading space is part of the token, which is why some entries begin with a gap.</p>
+    </div>
+    <div>
+      <h3>From logits to odds</h3>
+      <p>Beneath the percentages sit <span class="smallcaps">logits</span> &mdash; one raw score per entry in the vocabulary, emitted by the model's final layer. A logit has no scale of its own; it means nothing except against its neighbours. The softmax rule turns the whole set into proper odds: raise each score to an exponent, divide by the total. Every percentage on this sheet is a logit read through that rule.</p>
+    </div>
+    <div>
+      <h3>What temperature really does</h3>
+      <p>The logits never change. Temperature only stretches or squeezes them before they are read as odds. Near zero, the top score swamps all others and the machine is nearly deterministic. Raised high, the gaps close and unlikely words get their chance. It is a nerve dial, not a knowledge dial.</p>
+    </div>
+    <div>
+      <h3>How it reads the whole line</h3>
+      <p>Before any bet is placed, every word in the line looks at every other word &mdash; the mechanism called <span class="smallcaps">attention</span>. Each word builds its meaning from the company it keeps: in the line above, <em>watched</em> borrows from <em>lighthouse</em> and <em>lamp</em>, which is why the machine bets on <em>sea</em> rather than any noun the grammar would allow. The bet is one word; the reading behind it is the entire line at once.</p>
+    </div>
+    <div>
+      <h3>Does it think ahead?</h3>
+      <p>"It only predicts the next word" describes this page's interface, not necessarily the computation behind it. <a href="https://www.anthropic.com/research/tracing-thoughts-language-model" target="_blank" rel="noopener">Interpretability research</a> &mdash; opening models up and tracing the features inside &mdash; has caught larger models settling on a rhyme word before writing the line that reaches it, and holding one shared notion of a concept across languages. No plan is ever stated; something plan-shaped can still exist in the machinery. The honest phrase is not "no plan" but "no plan it ever declares."</p>
+    </div>
+    <div>
+      <h3>Why the guesses seem rough</h3>
+      <p>This press is deliberately tiny &mdash; a 135-million-parameter model, small enough to run inside a browser tab. The great models are thousands of times larger and far more fluent. What you see here is not their eloquence but their <em>method</em>, which is identical: odds on the next token, then a roll of the dice.</p>
+    </div>
+    <div>
+      <h3>The honest caveat</h3>
+      <p>Real systems add further rules after temperature &mdash; trimming the longest shots (top-p, top-k) and steering by training. Those are omitted here so a single idea stands clear. The sampling below draws from the full temperature-scaled odds, nothing more.</p>
+    </div>
+  </div>
+
+  <div class="colophon">
+    Set on-device by <span class="smallcaps">SmolLM2-135M-Instruct</span> via
+    <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a>.
+    No text leaves this browser · no API is called.<br>
+    A companion sheet to <em>The AI Interviews</em>.
+  </div>
+
+</div>
+
+<script type="module">
+import { AutoModelForCausalLM, AutoTokenizer, Tensor } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+
+const MODEL_ID = 'HuggingFaceTB/SmolLM2-135M-Instruct'; // small enough for a browser tab's memory
+const TOP_K = 8;          // how many candidates to display
+const DEFAULT_PROMPT = 'The lighthouse keeper lit the lamp and watched the';
+let SM_BUF = null;        // reused scratch buffer for softmax (allocated once)
+
+// ── DOM ──
+const $ = id => document.getElementById(id);
+const dot = $('dot'), statusText = $('status-text');
+const barFill = $('press-bar-fill'), pressNote = $('press-note');
+const dispatchEl = $('dispatch'), oddsEl = $('odds');
+const tempEl = $('temp'), tempRead = $('temp-read'), tempMood = $('temp-mood');
+const castBtn = $('cast-btn'), resetBtn = $('reset-btn');
+const editBtn = $('edit-btn'), promptEdit = $('prompt-edit');
+
+// ── State ──
+let tokenizer = null, model = null;
+let fixedText = DEFAULT_PROMPT;   // the seed line (rewritable)
+let castTokens = [];              // token strings the reader has cast
+let lastLogits = null;            // Float32Array over full vocab, cached for the current position
+let busy = false;
+
+// date furniture
+try {
+  $('edition-date').textContent = new Date().toLocaleDateString('en-GB',
+    { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+} catch(e){}
+
+function setStatus(state, text){ dot.className = 'dot '+state; statusText.textContent = text; }
+function currentText(){ return fixedText + castTokens.join(''); }
+
+function renderDispatch(){
+  const fixed = document.createElement('span'); fixed.className='fixed'; fixed.textContent = fixedText;
+  const cast = document.createElement('span'); cast.className='cast'; cast.textContent = castTokens.join('');
+  const caret = document.createElement('span'); caret.className='caret'; caret.textContent=' ▊';
+  dispatchEl.replaceChildren(fixed, cast, caret);
+}
+
+// mood label for the temperature reading
+function moodFor(t){
+  if(t<0.25) return 'pedantic';
+  if(t<0.55) return 'careful';
+  if(t<0.85) return 'measured';
+  if(t<1.15) return 'lively';
+  return 'feverish';
+}
+
+// interpolate bar colour ink→red as temperature rises
+function barColour(t){
+  const k = Math.max(0, Math.min(1, (t-0.2)/1.2));
+  const ink=[28,24,19], red=[154,43,28];
+  const c = ink.map((v,i)=>Math.round(v+(red[i]-v)*k));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+// softmax over the FULL vocab at temperature t → {ids, probs} for top-K, plus full probs for sampling
+function distribution(logits, t){
+  const n = logits.length;
+  if(!SM_BUF || SM_BUF.length !== n) SM_BUF = new Float32Array(n); // allocate once, then reuse
+  const exps = SM_BUF;
+  // temperature scaling then numerically-stable softmax
+  let max = -Infinity;
+  for(let i=0;i<n;i++){ const v=logits[i]/t; if(v>max) max=v; }
+  let sum=0;
+  for(let i=0;i<n;i++){ const e=Math.exp(logits[i]/t - max); exps[i]=e; sum+=e; }
+  // top-K by probability (single pass, small K)
+  const topIdx = new Array(TOP_K).fill(-1);
+  const topVal = new Array(TOP_K).fill(-Infinity);
+  for(let i=0;i<n;i++){
+    const p = exps[i];
+    if(p>topVal[TOP_K-1]){
+      let j=TOP_K-1;
+      while(j>0 && p>topVal[j-1]){ topVal[j]=topVal[j-1]; topIdx[j]=topIdx[j-1]; j--; }
+      topVal[j]=p; topIdx[j]=i;
+    }
+  }
+  const top = topIdx.map((id,k)=>({ id, prob: topVal[k]/sum }));
+  return { top, exps, sum };
+}
+
+function renderOdds(t){
+  if(!lastLogits){ return; }
+  const { top } = distribution(lastLogits, t);
+  const colour = barColour(t);
+  oddsEl.replaceChildren();
+  top.forEach((cand, k)=>{
+    if(cand.id<0) return;
+    let piece;
+    try{ piece = tokenizer.decode([cand.id], { skip_special_tokens:false }); }
+    catch(e){ piece = '⟨?⟩'; }
+    const shown = piece.replace(/\n/g,'⏎');
+    const li=document.createElement('li'); li.className='odd';
+    const rank=document.createElement('div'); rank.className='rank'; rank.textContent=(k+1);
+    const wordWrap=document.createElement('div'); wordWrap.className='word';
+    const tok=document.createElement('span'); tok.className='tok'; tok.textContent=shown;
+    const bar=document.createElement('div'); bar.className='bar';
+    const barIn=document.createElement('span');
+    barIn.style.width=(cand.prob*100).toFixed(1)+'%'; barIn.style.background=colour;
+    bar.appendChild(barIn);
+    wordWrap.appendChild(tok); wordWrap.appendChild(bar);
+    const pct=document.createElement('div'); pct.className='pct';
+    pct.textContent=(cand.prob*100).toFixed(cand.prob<0.01?2:1)+'%';
+    li.appendChild(rank); li.appendChild(wordWrap); li.appendChild(pct);
+    oddsEl.appendChild(li);
+  });
+}
+
+// forward pass → cache logits for the last position of currentText()
+async function recomputeOdds(){
+  if(!model || busy) return;
+  busy=true; setStatus('loading','casting the odds'); castBtn.disabled=true;
+  try{
+    const text = currentText();
+    const inputs = await tokenizer(text);
+    const out = await model(inputs);        // { logits: Tensor [1, seq, vocab] }
+    const logits = out.logits;
+    const dims = logits.dims;               // [1, seq, vocab]
+    const seq = dims[1], vocab = dims[2];
+    const flat = logits.data;               // typed array, length seq*vocab (batch 1)
+    const start = (seq-1)*vocab;
+    // copy the last row into a plain Float32Array
+    lastLogits = Float32Array.prototype.slice.call(flat, start, start+vocab);
+    // hand memory back promptly so it doesn't accumulate across casts
+    try{ logits.dispose && logits.dispose(); }catch(e){}
+    try{ if(inputs.input_ids && inputs.input_ids.dispose) inputs.input_ids.dispose(); }catch(e){}
+    renderOdds(parseFloat(tempEl.value));
+    setStatus('ready','ready');
+    castBtn.disabled=false; resetBtn.disabled=false;
+  }catch(err){
+    console.error(err);
+    setStatus('error','the type is jammed');
+    oddsEl.innerHTML='<li class="press-note" style="padding:1rem 0">The type is jammed — the odds could not be set for this line.</li>';
+  }
+  busy=false;
+}
+
+// sample one token from the FULL temperature-scaled distribution
+function sampleToken(t){
+  const { exps, sum } = distribution(lastLogits, t);
+  let r = Math.random()*sum, acc=0;
+  for(let i=0;i<exps.length;i++){ acc+=exps[i]; if(acc>=r) return i; }
+  return exps.length-1;
+}
+
+async function castNextWord(){
+  if(!lastLogits || busy) return;
+  const t = parseFloat(tempEl.value);
+  const id = sampleToken(t);
+  let piece;
+  try{ piece = tokenizer.decode([id], { skip_special_tokens:false }); }
+  catch(e){ piece=''; }
+  castTokens.push(piece);
+  renderDispatch();
+  await recomputeOdds();
+}
+
+function resetCopy(){
+  castTokens=[];
+  renderDispatch();
+  recomputeOdds();
+}
+
+// ── temperature dial: pure JS, no re-inference ──
+function onTemp(){
+  const t = parseFloat(tempEl.value);
+  tempRead.firstChild.textContent = t.toFixed(2);
+  tempMood.textContent = moodFor(t);
+  renderOdds(t);
+}
+tempEl.addEventListener('input', onTemp);
+
+// ── rewrite the opening line ──
+editBtn.addEventListener('click', ()=>{
+  if(promptEdit.style.display==='block'){
+    // commit
+    const v = promptEdit.value.trim();
+    if(v){ fixedText = v; castTokens=[]; }
+    promptEdit.style.display='none';
+    editBtn.textContent='Rewrite the line';
+    renderDispatch(); recomputeOdds();
+  }else{
+    promptEdit.value = fixedText;
+    promptEdit.style.display='block';
+    promptEdit.focus();
+    editBtn.textContent='Set this line';
+  }
+});
+
+castBtn.addEventListener('click', castNextWord);
+resetBtn.addEventListener('click', resetCopy);
+
+// ── load the model (two-try: WebGPU q4, then WASM q8) ──
+async function tryLoad(dtype, device){
+  const opts = { dtype };
+  if(device) opts.device = device;
+  opts.progress_callback = (p)=>{
+    if(p.status==='downloading' || p.status==='loading' || p.status==='progress'){
+      const pct = p.progress ? Math.round(p.progress) : 0;
+      barFill.style.width = pct+'%';
+      if(p.file) pressNote.textContent = 'setting '+p.file.split('/').pop()+
+        (p.total?` — ${(p.loaded/1e6).toFixed(0)} of ${(p.total/1e6).toFixed(0)} MB`:'');
+    }
+  };
+  tokenizer = tokenizer || await AutoTokenizer.from_pretrained(MODEL_ID);
+  model = await AutoModelForCausalLM.from_pretrained(MODEL_ID, opts);
+}
+
+async function load(){
+  setStatus('loading','warming the presses');
+  renderDispatch();
+  try{
+    try{
+      await tryLoad('q4f16','webgpu');
+    }catch(e1){
+      console.warn('WebGPU load failed, falling back to WASM q8', e1);
+      pressNote.textContent='no fast press found — falling back to a slower one';
+      try{ if(model && model.dispose) await model.dispose(); }catch(e){}
+      model=null;
+      await tryLoad('q8', null);
+    }
+    barFill.style.width='100%';
+    pressNote.textContent='press ready · weights cached · nothing leaves this browser';
+    setStatus('ready','ready');
+    await recomputeOdds();
+  }catch(err){
+    console.error(err);
+    setStatus('error','the wire is down');
+    pressNote.textContent='';
+    oddsEl.innerHTML='<li class="press-note" style="padding:1rem 0">The wire is down — this browser cannot run the on-device press. Try Chrome or Edge on a desktop.</li>';
+  }
+}
+
+load();
+</script>
+</body>
+</html>
